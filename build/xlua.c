@@ -388,11 +388,39 @@ void print_value(lua_State *L,  char *str, int idx) {
 
 //upvalue --- [1]: methods, [2]:getters, [3]:csindexer, [4]:base, [5]:indexfuncs, [6]:arrayindexer, [7]:baseindex
 //param   --- [1]: obj, [2]: key
-LUA_API int obj_indexer(lua_State *L) {	
+// dot-call bridge: self를 자동 삽입하여 obj.Method(args)가 obj:Method(args)처럼 동작
+static int dot_call_bridge(lua_State *L) {
+	int nargs = lua_gettop(L);
+	// upvalue1 = 원본 C 함수, upvalue2 = self(CLR 객체)
+
+	// 첫번째 인자가 self와 같으면 colon-call (이미 self가 있음)
+	if (nargs > 0 && lua_rawequal(L, 1, lua_upvalueindex(2))) {
+		// colon-call: 원본 함수를 그대로 호출
+		lua_pushvalue(L, lua_upvalueindex(1));
+		lua_insert(L, 1);
+		lua_call(L, nargs, LUA_MULTRET);
+	} else {
+		// dot-call: self를 삽입
+		lua_pushvalue(L, lua_upvalueindex(1)); // 원본 함수
+		lua_pushvalue(L, lua_upvalueindex(2)); // self
+		int i;
+		for (i = 1; i <= nargs; i++) {
+			lua_pushvalue(L, i);
+		}
+		lua_call(L, nargs + 1, LUA_MULTRET);
+	}
+	return lua_gettop(L);
+}
+
+LUA_API int obj_indexer(lua_State *L) {
 	if (!lua_isnil(L, lua_upvalueindex(1))) {
 		lua_pushvalue(L, 2);
 		lua_gettable(L, lua_upvalueindex(1));
 		if (!lua_isnil(L, -1)) {//has method
+			// 메서드를 찾으면 self를 바인딩한 클로저로 감싸서 반환
+			// → obj.Method(args)가 자동으로 obj:Method(args)처럼 동작
+			lua_pushvalue(L, 1);  // self (CLR 객체)
+			lua_pushcclosure(L, dot_call_bridge, 2); // [함수, self] → 클로저
 			return 1;
 		}
 		lua_pop(L, 1);
