@@ -1,0 +1,208 @@
+name: Build xLua (All Platforms)
+
+on:
+  push:
+    branches: [patch/dot-call, master]
+  workflow_dispatch:
+
+jobs:
+  # Windows x64 + x86
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Windows x64
+        run: |
+          mkdir build64_54
+          cd build64_54
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -G "Visual Studio 17 2022" -A x64 ../build
+          cd ..
+          cmake --build build64_54 --config Release
+
+      - name: Build Windows x86
+        run: |
+          mkdir build32_54
+          cd build32_54
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -G "Visual Studio 17 2022" -A Win32 ../build
+          cd ..
+          cmake --build build32_54 --config Release
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xlua-windows
+          path: |
+            build64_54/Release/xlua.dll
+            build32_54/Release/xlua.dll
+
+  # Android (arm64-v8a, armeabi-v7a, x86)
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r21e
+
+      - name: Build Android arm64-v8a
+        env:
+          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          mkdir build_android_arm64 && cd build_android_arm64
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 \
+            -DANDROID_TOOLCHAIN=clang \
+            ../build
+          cd .. && cmake --build build_android_arm64 --config Release
+
+      - name: Build Android armeabi-v7a
+        env:
+          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          mkdir build_android_v7a && cd build_android_v7a
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=android-21 \
+            -DANDROID_TOOLCHAIN=clang \
+            ../build
+          cd .. && cmake --build build_android_v7a --config Release
+
+      - name: Build Android x86
+        env:
+          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          mkdir build_android_x86 && cd build_android_x86
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=x86 -DANDROID_PLATFORM=android-21 \
+            -DANDROID_TOOLCHAIN=clang \
+            ../build
+          cd .. && cmake --build build_android_x86 --config Release
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xlua-android
+          path: |
+            build_android_arm64/libxlua.so
+            build_android_v7a/libxlua.so
+            build_android_x86/libxlua.so
+
+  # macOS (arm64 + x86_64 universal)
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build macOS arm64
+        run: |
+          mkdir build_osx_arm64 && cd build_osx_arm64
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            ../build
+          cd .. && cmake --build build_osx_arm64 --config Release
+
+      - name: Build macOS x86_64
+        run: |
+          mkdir build_osx_x64 && cd build_osx_x64
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            ../build
+          cd .. && cmake --build build_osx_x64 --config Release
+
+      - name: Create universal binary
+        run: |
+          mkdir -p universal
+          lipo -create \
+            build_osx_arm64/libxlua.dylib \
+            build_osx_x64/libxlua.dylib \
+            -output universal/libxlua.dylib || \
+          cp build_osx_arm64/libxlua.dylib universal/libxlua.dylib
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xlua-macos
+          path: universal/libxlua.dylib
+
+  # iOS
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build iOS arm64
+        run: |
+          mkdir build_ios && cd build_ios
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            ../build
+          cd .. && cmake --build build_ios --config Release
+
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xlua-ios
+          path: build_ios/Release-iphoneos/libxlua.a
+
+  # Linux x64 (서버용)
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Linux x64
+        run: |
+          mkdir build_linux64 && cd build_linux64
+          cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ../build
+          cd .. && cmake --build build_linux64 --config Release
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xlua-linux
+          path: build_linux64/libxlua.so
+
+  # 모든 플랫폼 아티팩트를 하나로 묶어서 릴리즈
+  package:
+    needs: [windows, android, macos, ios, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package all platforms
+        run: |
+          mkdir -p release/Plugins/x86_64
+          mkdir -p release/Plugins/x86
+          mkdir -p release/Plugins/arm64
+          mkdir -p release/Plugins/Android/libs/arm64-v8a
+          mkdir -p release/Plugins/Android/libs/armeabi-v7a
+          mkdir -p release/Plugins/Android/libs/x86
+          mkdir -p release/Plugins/iOS
+          mkdir -p release/Plugins/Linux/x86_64
+
+          cp artifacts/xlua-windows/build64_54/Release/xlua.dll release/Plugins/x86_64/
+          cp artifacts/xlua-windows/build32_54/Release/xlua.dll release/Plugins/x86/
+          cp artifacts/xlua-macos/libxlua.dylib release/Plugins/arm64/
+          cp artifacts/xlua-android/build_android_arm64/libxlua.so release/Plugins/Android/libs/arm64-v8a/
+          cp artifacts/xlua-android/build_android_v7a/libxlua.so release/Plugins/Android/libs/armeabi-v7a/
+          cp artifacts/xlua-android/build_android_x86/libxlua.so release/Plugins/Android/libs/x86/
+          cp artifacts/xlua-ios/libxlua.a release/Plugins/iOS/ 2>/dev/null || true
+          cp artifacts/xlua-linux/libxlua.so release/Plugins/Linux/x86_64/
+
+          cd release && tar czf ../xlua-dotcall-patch-all-platforms.tar.gz Plugins/
+
+      - name: Upload combined package
+        uses: actions/upload-artifact@v4
+        with:
+          name: xlua-all-platforms
+          path: xlua-dotcall-patch-all-platforms.tar.gz
