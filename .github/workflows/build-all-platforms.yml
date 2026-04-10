@@ -140,17 +140,18 @@ jobs:
         run: |
           mkdir build_ios && cd build_ios
           cmake -DLUA_VERSION=5.4.1 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DIOS=TRUE \
+            -G Xcode \
             ../build
-          cd .. && cmake --build build_ios --config Release
+          cd .. && cmake --build build_ios --config Release -- -sdk iphoneos
 
       - name: Upload iOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: xlua-ios
-          path: build_ios/Release-iphoneos/libxlua.a
+          path: |
+            build_ios/Release-iphoneos/libxlua.a
+            build_ios/Release/libxlua.a
 
   # Linux x64 (서버용)
   linux:
